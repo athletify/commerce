@@ -1,3 +1,5 @@
+FROM stripe/stripe-cli:latest AS stripe_cli
+
 FROM node:20-bookworm-slim
 
 ENV PNPM_HOME="/pnpm"
@@ -13,6 +15,12 @@ ENV DATABASE_URL=postgres://postgres:postgres@postgres:5432/medusa-b2b-headless?
 
 RUN corepack enable
 
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY --from=stripe_cli /bin/stripe /usr/local/bin/stripe
+
 WORKDIR /app
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
@@ -21,6 +29,8 @@ COPY apps/backend/package.json apps/backend/package.json
 RUN pnpm install --frozen-lockfile
 
 COPY . .
+
+RUN chmod +x /app/docker/medusa-local-entrypoint.sh
 
 RUN pnpm --filter @b2b-starter/backend build
 
@@ -31,4 +41,4 @@ WORKDIR /app/apps/backend
 
 EXPOSE 9000
 
-CMD ["sh", "-c", "pnpm medusa db:migrate --execute-all-links && exec pnpm medusa start --host 0.0.0.0 --port 9000"]
+CMD ["/app/docker/medusa-local-entrypoint.sh"]

@@ -105,8 +105,81 @@ For local Docker usage over plain `http://localhost`, keep `COOKIE_SECURE=false`
 | `STORE_CORS` | Comma-separated origins allowed to call public store APIs |
 | `ADMIN_CORS` | Comma-separated origins allowed to load the Medusa admin UI |
 | `AUTH_CORS` | Comma-separated origins allowed for authenticated browser flows |
+| `STRIPE_API_KEY` | Stripe secret key used by the Medusa Stripe payment provider |
+| `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret for Medusa payment webhooks |
 
 If you add an external client later, create a publishable API key in the admin dashboard and point that client to this backend's `/store/*` endpoints.
+
+For the current headless workaround, the seeded region enables two payment providers:
+
+- `pp_stripe_stripe` for online checkout
+- `pp_system_default` for manual or in-store payments already collected outside Medusa
+
+## Recurring Memberships
+
+This implementation keeps them in the isolated `membership` module and does not modify the cart or checkout flow for one-time purchases.
+
+First, apply the migration and register a Stripe webhook pointing to `POST /hooks/memberships/stripe`, using `STRIPE_WEBHOOK_SECRET`. Select: `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, and `invoice.payment_failed`. The signature is verified and event IDs are stored to prevent duplicate processing.
+
+An administrator configures each plan with `POST /admin/membership-plans`:
+
+```json
+{
+  "product_id": "prod_...",
+  "variant_id": "variant_...",
+  "sales_channel_id": "sc_...",
+  "billing_period": "monthly",
+  "active": true
+}
+```
+
+The backend validates the product, variant, and sales channel; it creates or reuses the Stripe Product and creates a Stripe Price. When the amount or period changes through `POST /admin/membership-plans/:id`, it creates another Price and never changes an existing one.
+
+Athletify uses its usual publishable key and the separate flow:
+
+```http
+POST /store/memberships/checkout
+x-publishable-api-key: pk_...
+Idempotency-Key: <a UUID generated once per checkout attempt>
+Content-Type: application/json
+
+{
+  "plan_id": "mplan_...",
+  "email": "athlete@example.com",
+  "name": "Ada Athlete",
+  "metadata": {
+    "organization_id": "org_...",
+    "company_id": "company_...",
+    "stock_location_id": "sloc_...",
+    "sale_source": "online"
+  }
+}
+```
+
+Keep the same `Idempotency-Key` for retries of the same checkout attempt. Medusa forwards it to Stripe, preventing duplicate Customers and Subscriptions after a network timeout.
+
+```json
+{
+  "membership_subscription_id": "msub_...",
+  "client_secret": "pi_..._secret_...",
+  "status": "incomplete"
+}
+```
+
+Confirm `client_secret` with Stripe Elements. Then call `GET /store/memberships/msub_...` with the same publishable key to retrieve the status, product, variant, and `next_billing_at`. Products with an active plan include `membership: { plan_id, billing_period, amount, currency_code }` in standard `/store/products` responses.
+
+To cancel, call `POST /store/memberships/:id/cancel` with the same publishable key. A cancellation reason is required; it is stored on the MembershipSubscription and in Stripe metadata. Cancellation is scheduled at the end of the current billing period by default. Pass `"immediately": true` to cancel now:
+
+```json
+{
+  "reason": "No longer needed",
+  "immediately": false
+}
+```
+
+The only intentional limitation is that a plan uses a fixed variant price without price rules: a single Stripe Price cannot represent Medusa's regional or dynamic pricing rules. For products with multiple recurring variants, the catalog exposes the first active plan for the product; the client must use that `plan_id` explicitly.
+
+See [Membership Stripe Webhooks](./docs/membership-webhooks.md) for local Stripe CLI setup and production Stripe Dashboard configuration.
 
 ## Notes
 
