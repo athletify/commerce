@@ -20,11 +20,5 @@ export default defineMiddlewares({
         },
       ],
     },
-    {
-      matcher: "/hooks/memberships/stripe",
-      method: ["POST"],
-      bodyParser: { preserveRawBody: true },
-      middlewares: [],
-    },
   ],
 });

@@ -1,9 +1,7 @@
 import { QUOTE_MODULE } from "./src/modules/quote";
 import { APPROVAL_MODULE } from "./src/modules/approval";
 import { COMPANY_MODULE } from "./src/modules/company";
-import { MEMBERSHIP_MODULE } from "./src/modules/membership";
-import { loadEnv, defineConfig, Modules } from "@medusajs/framework/utils";
-import { StripeConfig } from "./default.env";
+import { loadEnv, defineConfig } from "@medusajs/framework/utils";
 
 loadEnv(process.env.NODE_ENV || "development", process.cwd());
 
@@ -37,22 +35,6 @@ module.exports = defineConfig({
         }),
   },
   modules: {
-    [Modules.PAYMENT]: {
-      options: {
-        providers: [
-          {
-            resolve: "@medusajs/payment-stripe",
-            id: "stripe",
-            options: {
-              apiKey: StripeConfig.apiKey,
-              webhookSecret: StripeConfig.webhookSecret,
-              capture: true,
-              automaticPaymentMethods: true,
-            },
-          },
-        ],
-      },
-    },
     [COMPANY_MODULE]: {
       resolve: "./modules/company",
     },
@@ -61,9 +43,6 @@ module.exports = defineConfig({
     },
     [APPROVAL_MODULE]: {
       resolve: "./modules/approval",
-    },
-    [MEMBERSHIP_MODULE]: {
-      resolve: "./modules/membership",
     },
   },
 });
