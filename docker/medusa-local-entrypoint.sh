@@ -59,7 +59,11 @@ start_listener() {
 }
 
 membership_events="customer.subscription.created,customer.subscription.updated,customer.subscription.deleted,invoice.paid,invoice.payment_failed"
-if start_listener payments http://127.0.0.1:9000/hooks/payment/stripe_stripe; then
+# Medusa's payment webhook must only receive transitions that can authorize or
+# complete a payment. Forwarding payment_intent.created makes Medusa attempt to
+# complete the cart before Stripe Elements has confirmed the card.
+payment_events="payment_intent.succeeded,payment_intent.amount_capturable_updated"
+if start_listener payments http://127.0.0.1:9000/hooks/payment/stripe_stripe "$payment_events"; then
   payments_pid="$STRIPE_LISTENER_PID"
   export STRIPE_WEBHOOK_SECRET="$STRIPE_LISTENER_SECRET"
 

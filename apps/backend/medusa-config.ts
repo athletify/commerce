@@ -41,7 +41,7 @@ module.exports = defineConfig({
       options: {
         providers: [
           {
-            resolve: "@medusajs/payment-stripe",
+            resolve: "./src/providers/stripe-connect",
             id: "stripe",
             options: {
               apiKey: StripeConfig.apiKey,
