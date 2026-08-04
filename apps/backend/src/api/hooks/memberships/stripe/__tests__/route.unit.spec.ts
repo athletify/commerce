@@ -1,7 +1,6 @@
 jest.mock("../../../../../modules/membership/stripe", () => ({
   stripe: { webhooks: { constructEvent: jest.fn() } },
   membershipStatus: (status: string) => status,
-  stripeAmountToMajor: (amount: number, currency: string) => amount / (currency === "jpy" ? 1 : 100),
   stripeDate: () => null,
 }));
 
@@ -27,20 +26,14 @@ describe("membership Stripe webhook", () => {
   it("uses invoice.payment_failed as the source of truth and emits the internal event", async () => {
     const membership = { id: "msub_1", plan_id: "mplan_1", status: "active" };
     const service = {
-      listMembershipBillingCycles: jest.fn().mockResolvedValue([]),
-      retrieveMembershipBillingCycle: jest.fn().mockResolvedValue({ id: "mcycle_1", status: "failed" }),
-      createMembershipBillingCycles: jest.fn().mockResolvedValue({ id: "mcycle_1", status: "failed" }),
-      updateMembershipBillingCycles: jest.fn(),
       listStripeWebhookEvents: jest.fn().mockResolvedValue([]),
       listMembershipSubscriptions: jest.fn().mockResolvedValue([membership]),
-      retrieveMembershipSubscription: jest.fn().mockResolvedValue(membership),
       updateMembershipSubscriptions: jest.fn().mockResolvedValue({ ...membership, status: "past_due" }),
       listMembershipPlans: jest.fn().mockResolvedValue([{ id: "mplan_1", product_id: "prod_1", variant_id: "variant_1", sales_channel_id: "sc_1" }]),
-      retrieveMembershipPlan: jest.fn().mockResolvedValue({ id: "mplan_1", product_id: "prod_1", variant_id: "variant_1", sales_channel_id: "sc_1" }),
       createStripeWebhookEvents: jest.fn(),
     };
     const eventBus = { emit: jest.fn() };
-    (stripe as any).webhooks.constructEvent.mockReturnValue({ id: "evt_1", type: "invoice.payment_failed", data: { object: { id: "in_1", object: "invoice", subscription: "sub_1", currency: "usd", subtotal: 0, tax: 0, total: 0 } } });
+    (stripe as any).webhooks.constructEvent.mockReturnValue({ id: "evt_1", type: "invoice.payment_failed", data: { object: { object: "invoice", subscription: "sub_1" } } });
     const res: any = { json: jest.fn() };
     const req: any = { headers: { "stripe-signature": "sig" }, rawBody: Buffer.from("{}"), scope: { resolve: (key: string) => key === "membership" ? service : eventBus } };
     await POST(req, res);
@@ -64,40 +57,30 @@ describe("membership Stripe webhook", () => {
       stripe_subscription_id: "sub_1",
     };
     const service = {
-      listMembershipBillingCycles: jest.fn().mockResolvedValue([]),
-      retrieveMembershipBillingCycle: jest.fn().mockResolvedValue({ id: "mcycle_1", status: "pending", order_id: null, payment_id: "pay_existing", fulfillment_id: null }),
-      createMembershipBillingCycles: jest.fn().mockResolvedValue({ id: "mcycle_1", status: "pending", order_id: null, payment_id: "pay_existing", fulfillment_id: null }),
-      updateMembershipBillingCycles: jest.fn(),
       listStripeWebhookEvents: jest.fn().mockResolvedValue([]),
       listMembershipSubscriptions: jest.fn().mockResolvedValue([membership]),
-      retrieveMembershipSubscription: jest.fn().mockResolvedValue(membership),
       updateMembershipSubscriptions: jest.fn().mockResolvedValue({ ...membership, status: "active" }),
       listMembershipPlans: jest.fn().mockResolvedValue([{
         id: "mplan_1", product_id: "prod_1", variant_id: "variant_1", sales_channel_id: "sc_1", currency_code: "usd", amount: 10.99,
       }]),
-      retrieveMembershipPlan: jest.fn().mockResolvedValue({
-        id: "mplan_1", product_id: "prod_1", variant_id: "variant_1", sales_channel_id: "sc_1", currency_code: "usd",
-      }),
       createStripeWebhookEvents: jest.fn(),
     };
-    const query = { graph: jest.fn(async ({ entity }: any) => {
-      if (entity === "stock_location") return { data: [{ id: "sloc_1", address: { country_code: "US", province: "CA" } }] };
-      if (entity === "tax_region") return { data: [{ id: "txreg_us", province_code: null, tax_rates: [] }] };
-      if (entity === "region") return { data: [{ id: "reg_1" }] };
-      return { data: [{ id: "order_1", items: [{ id: "orli_1", title: "Membership", variant: { sku: "membership", barcode: "" } }] }] };
-    }) };
+    const query = { graph: jest.fn().mockResolvedValue({ data: [{ id: "reg_1" }] }) };
     const eventBus = { emit: jest.fn() };
     const createOrder = { run: jest.fn().mockResolvedValue({ result: { id: "order_1" } }) };
     const createFulfillment = { run: jest.fn().mockResolvedValue({ result: { id: "ful_1" } }) };
     const orderService = { registerFulfillment: jest.fn() };
     const link = { create: jest.fn() };
     const locking = { execute: jest.fn(async (_keys: string[], callback: () => Promise<unknown>) => callback()) };
+    query.graph
+      .mockResolvedValueOnce({ data: [{ id: "reg_1" }] })
+      .mockResolvedValueOnce({ data: [{ id: "order_1", items: [{ id: "orli_1", title: "Membership", quantity: 1, variant: { sku: "membership", barcode: "" } }] }] });
     (createOrderWorkflow as unknown as jest.Mock).mockReturnValue(createOrder);
     (createFulfillmentWorkflow as unknown as jest.Mock).mockReturnValue(createFulfillment);
     (stripe as any).webhooks.constructEvent.mockReturnValue({
       id: "evt_active_1",
-      type: "invoice.paid",
-      data: { object: { id: "in_1", object: "invoice", subscription: "sub_1", currency: "usd", subtotal: 1099, tax: 55, total: 1154 } },
+      type: "customer.subscription.updated",
+      data: { object: { object: "subscription", id: "sub_1", status: "active", cancel_at_period_end: false } },
     });
     const res: any = { json: jest.fn() };
     const req: any = {
@@ -135,15 +118,9 @@ describe("membership Stripe webhook", () => {
       id: "msub_1", plan_id: "mplan_1", status: "incomplete", organization_id: "org_1", company_id: "company_1",
       stock_location_id: "sloc_1", email: "ada@example.com", stripe_subscription_id: "sub_1",
     };
-    const cycle: any = { id: "mcycle_1", stripe_invoice_id: "in_1", status: "pending", order_id: null, payment_id: null, fulfillment_id: null };
     const service = {
-      listMembershipBillingCycles: jest.fn().mockImplementation(async () => cycle.stripe_invoice_id ? [{ ...cycle }] : []),
-      retrieveMembershipBillingCycle: jest.fn().mockImplementation(async () => ({ ...cycle })),
-      createMembershipBillingCycles: jest.fn().mockImplementation(async (data) => Object.assign(cycle, data)),
-      updateMembershipBillingCycles: jest.fn().mockImplementation(async (data) => Object.assign(cycle, data)),
       listStripeWebhookEvents: jest.fn().mockResolvedValue([]),
       listMembershipSubscriptions: jest.fn().mockImplementation(async () => [{ ...membership }]),
-      retrieveMembershipSubscription: jest.fn().mockImplementation(async () => ({ ...membership })),
       updateMembershipSubscriptions: jest.fn().mockImplementation(async (data) => {
         Object.assign(membership, data);
         return { ...membership, status: data.status || membership.status };
@@ -151,25 +128,17 @@ describe("membership Stripe webhook", () => {
       listMembershipPlans: jest.fn().mockResolvedValue([{
         id: "mplan_1", product_id: "prod_1", variant_id: "variant_1", sales_channel_id: "sc_1", currency_code: "usd", amount: 10.99,
       }]),
-      retrieveMembershipPlan: jest.fn().mockResolvedValue({
-        id: "mplan_1", product_id: "prod_1", variant_id: "variant_1", sales_channel_id: "sc_1", currency_code: "usd",
-      }),
       createStripeWebhookEvents: jest.fn(),
     };
     const query = {
       graph: jest.fn().mockImplementation(async ({ entity }: any) => {
-        if (entity === "stock_location") return { data: [{ id: "sloc_1", address: { country_code: "US", province: "CA" } }] };
-        if (entity === "tax_region") return { data: [
-          { id: "txreg_us", province_code: null, tax_rates: [{ id: "txr_us", rate: 5, is_default: true }] },
-          { id: "txreg_ca", province_code: "ca", tax_rates: [{ id: "txr_ca", rate: 5, code: "CA", name: "CA sales tax", is_default: true }] },
-        ] };
         if (entity === "region") return { data: [{ id: "reg_1" }] };
         if (entity === "payment") return { data: [{ id: "pay_1" }] };
         return { data: [{ id: "order_1", items: [{ id: "orli_1", title: "Membership", variant: { sku: "membership", barcode: "" } }] }] };
       }),
     };
     const eventBus = { emit: jest.fn() };
-    const orderService = { registerFulfillment: jest.fn(), upsertOrderLineItemTaxLines: jest.fn() };
+    const orderService = { registerFulfillment: jest.fn() };
     const link = { create: jest.fn() };
     const createOrder = { run: jest.fn().mockResolvedValue({ result: { id: "order_1" } }) };
     const createPaymentCollection = { run: jest.fn().mockResolvedValue({ result: [{ id: "pay_col_1" }] }) };
@@ -190,8 +159,8 @@ describe("membership Stripe webhook", () => {
       }),
     };
     (stripe as any).webhooks.constructEvent.mockReturnValue({
-      id: "evt_active_retry", type: "invoice.paid",
-      data: { object: { id: "in_1", object: "invoice", subscription: "sub_1", currency: "usd", subtotal: 1099, tax: 55, total: 1154 } },
+      id: "evt_active_retry", type: "customer.subscription.updated",
+      data: { object: { object: "subscription", id: "sub_1", status: "active", cancel_at_period_end: false } },
     });
     const request = () => ({
       headers: { "stripe-signature": "sig" }, rawBody: Buffer.from("{}"),
@@ -201,13 +170,6 @@ describe("membership Stripe webhook", () => {
     await Promise.all([POST(request(), { json: jest.fn() } as any), POST(request(), { json: jest.fn() } as any)]);
 
     expect(createOrder.run).toHaveBeenCalledTimes(1);
-    expect(createOrder.run).toHaveBeenCalledWith(expect.objectContaining({ input: expect.objectContaining({
-      shipping_address: expect.objectContaining({ country_code: "us", province: "ca" }),
-      items: [expect.objectContaining({ unit_price: 10.99 })],
-    }) }));
-    expect(orderService.upsertOrderLineItemTaxLines).toHaveBeenCalledWith([expect.objectContaining({ tax_rate_id: "txr_ca", rate: 5 })]);
-    expect(createPaymentCollection.run).toHaveBeenCalledWith(expect.objectContaining({ input: { order_id: "order_1", amount: 11.54 } }));
-    expect(processPayment.run).toHaveBeenCalledWith(expect.objectContaining({ input: expect.objectContaining({ data: expect.objectContaining({ amount: 11.54 }) }) }));
     expect(processPayment.run).toHaveBeenCalledTimes(1);
     expect(createFulfillment.run).toHaveBeenCalledTimes(1);
     expect(createFulfillment.run).toHaveBeenCalledWith(expect.objectContaining({ input: expect.objectContaining({

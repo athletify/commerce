@@ -110,6 +110,11 @@ For local Docker usage over plain `http://localhost`, keep `COOKIE_SECURE=false`
 
 If you add an external client later, create a publishable API key in the admin dashboard and point that client to this backend's `/store/*` endpoints.
 
+For the current headless workaround, the seeded region enables two payment providers:
+
+- `pp_stripe_stripe` for online checkout
+- `pp_system_default` for manual or in-store payments already collected outside Medusa
+
 ## Recurring Memberships
 
 This implementation keeps them in the isolated `membership` module and does not modify the cart or checkout flow for one-time purchases.
@@ -130,11 +135,11 @@ An administrator configures each plan with `POST /admin/membership-plans`:
 
 The backend validates the product, variant, and sales channel; it creates or reuses the Stripe Product and creates a Stripe Price. When the amount or period changes through `POST /admin/membership-plans/:id`, it creates another Price and never changes an existing one.
 
-Athletify backend uses the existing Medusa Secret API Key as its **Athletify backend API key** for the separate flow. These endpoints are not callable with a publishable key or from the browser:
+Athletify uses its usual publishable key and the separate flow:
 
 ```http
- POST /store/memberships/checkout
-Authorization: Basic sk_...:
+POST /store/memberships/checkout
+x-publishable-api-key: pk_...
 Idempotency-Key: <a UUID generated once per checkout attempt>
 Content-Type: application/json
 
@@ -161,9 +166,9 @@ Keep the same `Idempotency-Key` for retries of the same checkout attempt. Medusa
 }
 ```
 
-Confirm `client_secret` with Stripe Elements. Then Athletify backend calls `GET /store/memberships/msub_...` with the same Athletify backend API key to retrieve the status, product, variant, and `next_billing_at`. Products with an active plan include `membership: { plan_id, billing_period, amount, currency_code }` in standard `/store/products` responses.
+Confirm `client_secret` with Stripe Elements. Then call `GET /store/memberships/msub_...` with the same publishable key to retrieve the status, product, variant, and `next_billing_at`. Products with an active plan include `membership: { plan_id, billing_period, amount, currency_code }` in standard `/store/products` responses.
 
-To cancel, Athletify backend calls `POST /store/memberships/:id/cancel` with the same Athletify backend API key. A cancellation reason is required; it is stored on the MembershipSubscription and in Stripe metadata. Cancellation is scheduled at the end of the current billing period by default. Pass `"immediately": true` to cancel now:
+To cancel, call `POST /store/memberships/:id/cancel` with the same publishable key. A cancellation reason is required; it is stored on the MembershipSubscription and in Stripe metadata. Cancellation is scheduled at the end of the current billing period by default. Pass `"immediately": true` to cancel now:
 
 ```json
 {

@@ -46,10 +46,6 @@ export default async function membershipOneTimePaymentCaptured({
     const plan: any = plansByVariant.get(item.variant_id);
     await locking.execute([`membership-one-time:${order.id}:${item.variant_id}`], async () => {
       let [membership] = await membershipService.listMembershipSubscriptions({ order_id: order.id, plan_id: plan.id });
-      // Recurring memberships create and fulfill their symbolic order in the
-      // membership webhook. A captured payment from that flow also emits this
-      // event, but must never create a second fulfillment for the same line.
-      if (membership && membership.renewal_type !== "none") return;
       if (!membership) {
         const capturedAt = new Date();
         membership = await membershipService.createMembershipSubscriptions({

@@ -2,7 +2,6 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework";
 import { addToCartWorkflow } from "@medusajs/medusa/core-flows";
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils";
 import { StoreAddLineItemsBulkType } from "../../../validators";
-import { applyStockLocationTaxes } from "../../../../../../utils/stock-location-tax";
 
 export async function POST(
   req: MedusaRequest<StoreAddLineItemsBulkType>,
@@ -31,8 +30,6 @@ export async function POST(
   await addToCartWorkflow(req.scope).run({
     input: workflowInput,
   });
-
-  await applyStockLocationTaxes(req.scope, cart.id);
 
   const {
     data: [upatedCart],

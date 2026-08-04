@@ -15,9 +15,9 @@ const response = () => {
 
 describe("membership cancellation", () => {
   it("rejects cancellation for a one-time membership before calling Stripe", async () => {
-    const membership = { id: "msub_1", customer_id: "cus_1", renewal_type: "none", status: "active", plan: { sales_channel_id: "sc_1" } };
+    const membership = { id: "msub_1", renewal_type: "none", status: "active", plan: { sales_channel_id: "sc_1" } };
     const service = { listMembershipSubscriptions: jest.fn().mockResolvedValue([membership]) };
-    const req: any = { params: { id: "msub_1" }, auth_context: { actor_id: "cus_1" }, validatedBody: { reason: "No longer needed", immediately: false }, publishable_key_context: { sales_channel_ids: ["sc_1"] }, scope: { resolve: () => service } };
+    const req: any = { params: { id: "msub_1" }, validatedBody: { reason: "No longer needed", immediately: false }, publishable_key_context: { sales_channel_ids: ["sc_1"] }, scope: { resolve: () => service } };
     const res: any = { status: jest.fn(), json: jest.fn() };
     res.status.mockReturnValue(res);
     await POST(req, res);
@@ -26,7 +26,7 @@ describe("membership cancellation", () => {
   });
 
   const membership = {
-    id: "msub_1", customer_id: "cus_1", status: "active", stripe_subscription_id: "sub_1",
+    id: "msub_1", status: "active", stripe_subscription_id: "sub_1",
     plan: { sales_channel_id: "sc_1" },
   };
 
@@ -40,7 +40,6 @@ describe("membership cancellation", () => {
     });
     const req: any = {
       params: { id: "msub_1" },
-      auth_context: { actor_id: "cus_1" },
       validatedBody: { reason: "No longer needed", immediately: false },
       publishable_key_context: { sales_channel_ids: ["sc_1"] },
       scope: { resolve: () => service },
@@ -75,7 +74,6 @@ describe("membership cancellation", () => {
     });
     const req: any = {
       params: { id: "msub_1" },
-      auth_context: { actor_id: "cus_1" },
       validatedBody: { reason: "Requested a refund", immediately: true },
       publishable_key_context: { sales_channel_ids: ["sc_1"] },
       scope: { resolve: () => service },

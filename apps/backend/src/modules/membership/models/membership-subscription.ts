@@ -18,7 +18,7 @@ export const MembershipSubscription = model.define("membership_subscription", {
   cancellation_requested_at: model.dateTime().nullable(),
   customer_name: model.text().nullable(),
   email: model.text(),
-  status: model.enum(["incomplete", "active", "past_due", "canceled", "trialing", "unpaid", "paused", "incomplete_expired"]),
+  status: model.enum(["incomplete", "active", "past_due", "canceled"]),
   current_period_start: model.dateTime().nullable(),
   current_period_end: model.dateTime().nullable(),
   cancel_at_period_end: model.boolean().default(false),
