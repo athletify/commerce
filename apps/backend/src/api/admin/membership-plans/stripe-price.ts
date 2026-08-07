@@ -1,3 +1,18 @@
+export type MembershipBillingPeriod = "weekly" | "biweekly" | "monthly" | "yearly";
+
+export const stripeRecurringForBillingPeriod = (billingPeriod: MembershipBillingPeriod) => {
+  switch (billingPeriod) {
+    case "weekly":
+      return { interval: "week" as const, interval_count: 1 };
+    case "biweekly":
+      return { interval: "week" as const, interval_count: 2 };
+    case "monthly":
+      return { interval: "month" as const };
+    case "yearly":
+      return { interval: "year" as const };
+  }
+};
+
 export const stripeUnitAmount = (amount: unknown, currencyCode: string): number => {
   const majorAmount = typeof amount === "number" ? amount : Number(amount);
   const currency = currencyCode.trim().toUpperCase();

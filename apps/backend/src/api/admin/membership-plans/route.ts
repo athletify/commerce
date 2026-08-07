@@ -3,7 +3,7 @@ import { MEMBERSHIP_MODULE } from "../../../modules/membership";
 import { stripe } from "../../../modules/membership/stripe";
 import { getVariantForMembership } from "../../memberships/utils";
 import { AdminCreateMembershipPlanType } from "./validators";
-import { stripeUnitAmount } from "./stripe-price";
+import { stripeRecurringForBillingPeriod, stripeUnitAmount } from "./stripe-price";
 
 const createStripePrice = async (input: any, title: string, price: any, productId?: string) => {
   const stripeProduct = productId
@@ -13,7 +13,7 @@ const createStripePrice = async (input: any, title: string, price: any, productI
     product: stripeProduct.id,
     currency: price.currency_code,
     unit_amount: stripeUnitAmount(price.amount, price.currency_code),
-    recurring: { interval: input.billing_period === "monthly" ? "month" : "year" },
+    recurring: stripeRecurringForBillingPeriod(input.billing_period),
     metadata: { medusa_product_id: input.product_id, medusa_variant_id: input.variant_id, sales_channel_id: input.sales_channel_id },
   });
   return { stripe_product_id: stripeProduct.id, stripe_price_id: stripePrice.id };

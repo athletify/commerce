@@ -7,7 +7,7 @@ export const AdminCreateMembershipPlan = z.object({
   product_id: z.string().min(1),
   variant_id: z.string().min(1),
   sales_channel_id: z.string().min(1),
-  billing_period: z.enum(["monthly", "yearly"]),
+  billing_period: z.enum(["weekly", "biweekly", "monthly", "yearly"]),
   active: z.boolean().optional(),
 }).strict();
 export type AdminUpdateMembershipPlanType = z.infer<typeof AdminUpdateMembershipPlan>;

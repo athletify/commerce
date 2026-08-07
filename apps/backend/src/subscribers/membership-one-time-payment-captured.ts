@@ -3,9 +3,11 @@ import type { SubscriberArgs, SubscriberConfig } from "@medusajs/medusa";
 import { createFulfillmentWorkflow } from "@medusajs/medusa/core-flows";
 import { MEMBERSHIP_MODULE } from "../modules/membership";
 
-const periodEnd = (start: Date, billingPeriod: "monthly" | "yearly") => {
+const periodEnd = (start: Date, billingPeriod: "weekly" | "biweekly" | "monthly" | "yearly") => {
   const end = new Date(start);
-  if (billingPeriod === "monthly") end.setUTCMonth(end.getUTCMonth() + 1);
+  if (billingPeriod === "weekly") end.setUTCDate(end.getUTCDate() + 7);
+  else if (billingPeriod === "biweekly") end.setUTCDate(end.getUTCDate() + 14);
+  else if (billingPeriod === "monthly") end.setUTCMonth(end.getUTCMonth() + 1);
   else end.setUTCFullYear(end.getUTCFullYear() + 1);
   return end;
 };
