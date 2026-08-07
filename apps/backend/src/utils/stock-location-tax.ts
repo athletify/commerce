@@ -1,4 +1,6 @@
 import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils";
+import { refreshPaymentCollectionForCartWorkflow } from "@medusajs/medusa/core-flows";
+import { createHash } from "node:crypto";
 
 type TaxRate = {
   id: string;
@@ -49,11 +51,37 @@ export function stripeTaxRateIds(tax: StockLocationTax): string[] {
   return tax.rates.map((rate) => rate.metadata!.stripe_tax_rate_id as string);
 }
 
+type TaxableCartItem = { id: string };
+
+/**
+ * `setLineItemTaxLines` upserts by its input ID. A stable ID for the pair
+ * makes repeating tax resolution replace the same tax line rather than create
+ * another one for the same item and rate.
+ */
+export function stockLocationTaxLines(items: TaxableCartItem[], rates: TaxRate[]) {
+  const seen = new Set<string>();
+  return items.flatMap((item) => rates.flatMap((rate) => {
+    const pair = `${item.id}:${rate.id}`;
+    if (seen.has(pair)) return [];
+    seen.add(pair);
+    const id = `calitxl_${createHash("sha256").update(pair).digest("hex").slice(0, 26)}`;
+    return [{
+      id,
+      item_id: item.id,
+      tax_rate_id: rate.id,
+      description: rate.name || rate.code || "Sales tax",
+      code: rate.code || rate.id,
+      rate: Number(rate.rate),
+      provider_id: "system",
+    }];
+  }));
+}
+
 export async function applyStockLocationTaxes(scope: any, cartId: string) {
   const query: any = scope.resolve(ContainerRegistrationKeys.QUERY);
   const { data: [cart] } = await query.graph({
     entity: "cart",
-    fields: ["id", "metadata", "items.id"],
+    fields: ["id", "metadata", "items.id", "payment_collection.id", "payment_collection.payment_sessions.provider_id"],
     filters: { id: cartId },
   });
   const stockLocationId = cart?.metadata?.stock_location_id;
@@ -61,7 +89,16 @@ export async function applyStockLocationTaxes(scope: any, cartId: string) {
   const tax = await resolveStockLocationTax(scope, stockLocationId);
   const cartService: any = scope.resolve(Modules.CART);
   await cartService.updateCarts({ id: cart.id, shipping_address: tax.address });
-  await cartService.setLineItemTaxLines(cart.id, (cart.items || []).flatMap((item: any) => tax.rates.map((rate) => ({
-    item_id: item.id, tax_rate_id: rate.id, description: rate.name || rate.code || "Sales tax", code: rate.code || rate.id, rate: Number(rate.rate), provider_id: "system",
-  }))));
+  await cartService.setLineItemTaxLines(cart.id, stockLocationTaxLines(cart.items || [], tax.rates));
+
+  // Tax lines change cart.raw_total. Keep a collection with no payment session,
+  // or one using the manual provider, synchronized before manual authorization.
+  // Existing Stripe sessions retain their established lifecycle untouched.
+  const paymentSessions = cart.payment_collection?.payment_sessions || [];
+  const canRefreshPaymentCollection = !paymentSessions.length || paymentSessions.every(
+    (session: { provider_id?: string }) => session.provider_id === "pp_system_default"
+  );
+  if (cart.payment_collection?.id && canRefreshPaymentCollection) {
+    await refreshPaymentCollectionForCartWorkflow(scope).run({ input: { cart_id: cart.id } });
+  }
 }
