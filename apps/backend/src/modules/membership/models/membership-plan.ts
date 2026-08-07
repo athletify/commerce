@@ -5,7 +5,7 @@ export const MembershipPlan = model.define("membership_plan", {
   product_id: model.text(),
   variant_id: model.text(),
   sales_channel_id: model.text(),
-  billing_period: model.enum(["monthly", "yearly"]),
+  billing_period: model.enum(["weekly", "biweekly", "monthly", "yearly"]),
   stripe_product_id: model.text(),
   stripe_price_id: model.text(),
   // A snapshot of the variant price used to create the immutable Stripe Price.
