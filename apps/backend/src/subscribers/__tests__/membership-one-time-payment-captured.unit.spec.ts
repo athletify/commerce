@@ -62,4 +62,39 @@ describe("one-time membership payment subscriber", () => {
     }));
     expect(membershipService.updateMembershipSubscriptions).toHaveBeenCalledWith({ id: "msub_1", fulfillment_id: "ful_1" });
   });
+
+  it("does not add a fulfillment or visible duplicate line when a recurring membership payment is captured", async () => {
+    const recurringMembership = { id: "msub_recurring", order_id: "order_1", plan_id: "mplan_1", renewal_type: "recurring", fulfillment_id: null };
+    const membershipService = {
+      listMembershipPlans: jest.fn().mockResolvedValue([{ id: "mplan_1", variant_id: "variant_membership", billing_period: "monthly", active: true }]),
+      listMembershipSubscriptions: jest.fn().mockResolvedValue([recurringMembership]),
+      createMembershipSubscriptions: jest.fn(),
+      updateMembershipSubscriptions: jest.fn(),
+    };
+    const query = {
+      graph: jest.fn().mockResolvedValue({ data: [{
+        id: "pay_1",
+        payment_collection: { order: {
+          id: "order_1", email: "ada@example.com", metadata: { stock_location_id: "sloc_1" },
+          items: [{ id: "item_membership", title: "Monthly membership", variant_id: "variant_membership", variant: { sku: "membership", barcode: "" } }],
+        } },
+      }] }),
+    };
+    const createFulfillment = { run: jest.fn() };
+    (createFulfillmentWorkflow as unknown as jest.Mock).mockReturnValue(createFulfillment);
+    const orderService = { registerFulfillment: jest.fn() };
+    const link = { create: jest.fn() };
+    const locking = { execute: jest.fn(async (_keys: string[], callback: () => Promise<unknown>) => callback()) };
+    const container: any = {
+      resolve: (key: string) => key === "query" ? query : key === "membership" ? membershipService : key === "locking" ? locking : key === "order" ? orderService : link,
+    };
+
+    await handler({ event: { data: { id: "pay_1" } }, container } as any);
+
+    expect(membershipService.createMembershipSubscriptions).not.toHaveBeenCalled();
+    expect(createFulfillment.run).not.toHaveBeenCalled();
+    expect(orderService.registerFulfillment).not.toHaveBeenCalled();
+    expect(link.create).not.toHaveBeenCalled();
+    expect(membershipService.updateMembershipSubscriptions).not.toHaveBeenCalled();
+  });
 });

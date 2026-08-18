@@ -10,11 +10,21 @@ export const stripe = new Stripe(StripeConfig.apiKey, {
 });
 
 export const membershipStatus = (status: string) => {
-  if (["active", "past_due", "canceled", "incomplete"].includes(status)) {
-    return status as "active" | "past_due" | "canceled" | "incomplete";
+  if (["active", "past_due", "canceled", "incomplete", "trialing", "unpaid", "paused", "incomplete_expired"].includes(status)) {
+    return status as "active" | "past_due" | "canceled" | "incomplete" | "trialing" | "unpaid" | "paused" | "incomplete_expired";
   }
   return "incomplete" as const;
 };
 
 export const stripeDate = (value?: number | null) =>
   value ? new Date(value * 1000) : null;
+
+// Stripe amounts are in the currency's smallest unit. These currencies have
+// no minor unit; all others supported by the current checkout use two.
+const ZERO_DECIMAL_CURRENCIES = new Set(["bif", "clp", "djf", "gnf", "jpy", "kmf", "krw", "mga", "pyg", "rwf", "ugx", "vnd", "vuv", "xaf", "xof", "xpf"]);
+
+export const stripeAmountToMajor = (amount: number, currency: string) =>
+  amount / (ZERO_DECIMAL_CURRENCIES.has(currency.toLowerCase()) ? 1 : 100);
+
+/** Access is granted only while Stripe considers the subscription active or trialing. */
+export const membershipHasAccess = (status: string) => status === "active" || status === "trialing";
