@@ -3,6 +3,7 @@ import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils";
 import { StepResponse } from "@medusajs/framework/workflows-sdk";
 import { COMPANY_MODULE } from "../../modules/company";
 import { CartDTO } from "@medusajs/framework/types";
+import { applyStockLocationTaxes } from "../../utils/stock-location-tax";
 
 createCartWorkflow.hooks.cartCreated(
   async (
@@ -15,6 +16,10 @@ createCartWorkflow.hooks.cartCreated(
     const remoteLink = container.resolve(ContainerRegistrationKeys.LINK);
 
     const cartInputdata = cart as CartDTO;
+
+    if (cartInputdata.metadata?.stock_location_id) {
+      await applyStockLocationTaxes(container, cartInputdata.id);
+    }
 
     if (!cartInputdata.metadata?.company_id) {
       return new StepResponse(undefined, null);
