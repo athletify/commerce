@@ -35,6 +35,8 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
+    env_file:
+      - ./apps/backend/.env
     depends_on:
       postgres:
         condition: service_healthy
