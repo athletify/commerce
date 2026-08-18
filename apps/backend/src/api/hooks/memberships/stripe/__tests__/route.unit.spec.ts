@@ -5,6 +5,10 @@ jest.mock("../../../../../modules/membership/stripe", () => ({
   stripeDate: () => null,
 }));
 
+jest.mock("../../../../../../default.env", () => ({
+  StripeConfig: { membershipWebhookSecret: "whsec_membership_test" },
+}));
+
 jest.mock("@medusajs/medusa/core-flows", () => ({
   createOrderWorkflow: jest.fn(),
   createOrderPaymentCollectionWorkflow: jest.fn(),
@@ -40,9 +44,10 @@ describe("membership Stripe webhook", () => {
       createStripeWebhookEvents: jest.fn(),
     };
     const eventBus = { emit: jest.fn() };
+    const locking = { execute: jest.fn(async (_keys: string[], callback: () => Promise<unknown>) => callback()) };
     (stripe as any).webhooks.constructEvent.mockReturnValue({ id: "evt_1", type: "invoice.payment_failed", data: { object: { id: "in_1", object: "invoice", subscription: "sub_1", currency: "usd", subtotal: 0, tax: 0, total: 0 } } });
     const res: any = { json: jest.fn() };
-    const req: any = { headers: { "stripe-signature": "sig" }, rawBody: Buffer.from("{}"), scope: { resolve: (key: string) => key === "membership" ? service : eventBus } };
+    const req: any = { headers: { "stripe-signature": "sig" }, rawBody: Buffer.from("{}"), scope: { resolve: (key: string) => key === "membership" ? service : key === "locking" ? locking : eventBus } };
     await POST(req, res);
     expect(service.updateMembershipSubscriptions).toHaveBeenCalledWith(expect.objectContaining({ id: "msub_1", status: "past_due" }));
     expect(eventBus.emit).toHaveBeenCalledWith(expect.objectContaining({ name: "membership.subscription.updated", data: expect.objectContaining({ sales_channel_id: "sc_1", status: "past_due" }) }));
@@ -136,12 +141,14 @@ describe("membership Stripe webhook", () => {
       stock_location_id: "sloc_1", email: "ada@example.com", stripe_subscription_id: "sub_1",
     };
     const cycle: any = { id: "mcycle_1", stripe_invoice_id: "in_1", status: "pending", order_id: null, payment_id: null, fulfillment_id: null };
+    const processedEvents = new Set<string>();
     const service = {
       listMembershipBillingCycles: jest.fn().mockImplementation(async () => cycle.stripe_invoice_id ? [{ ...cycle }] : []),
       retrieveMembershipBillingCycle: jest.fn().mockImplementation(async () => ({ ...cycle })),
       createMembershipBillingCycles: jest.fn().mockImplementation(async (data) => Object.assign(cycle, data)),
       updateMembershipBillingCycles: jest.fn().mockImplementation(async (data) => Object.assign(cycle, data)),
-      listStripeWebhookEvents: jest.fn().mockResolvedValue([]),
+      listStripeWebhookEvents: jest.fn(async ({ stripe_event_id }: { stripe_event_id: string }) =>
+        processedEvents.has(stripe_event_id) ? [{ id: "mwe_1" }] : []),
       listMembershipSubscriptions: jest.fn().mockImplementation(async () => [{ ...membership }]),
       retrieveMembershipSubscription: jest.fn().mockImplementation(async () => ({ ...membership })),
       updateMembershipSubscriptions: jest.fn().mockImplementation(async (data) => {
@@ -154,7 +161,10 @@ describe("membership Stripe webhook", () => {
       retrieveMembershipPlan: jest.fn().mockResolvedValue({
         id: "mplan_1", product_id: "prod_1", variant_id: "variant_1", sales_channel_id: "sc_1", currency_code: "usd",
       }),
-      createStripeWebhookEvents: jest.fn(),
+      createStripeWebhookEvents: jest.fn(async ({ stripe_event_id }: { stripe_event_id: string }) => {
+        processedEvents.add(stripe_event_id);
+        return { id: "mwe_1" };
+      }),
     };
     const query = {
       graph: jest.fn().mockImplementation(async ({ entity }: any) => {
@@ -181,11 +191,12 @@ describe("membership Stripe webhook", () => {
     (createPaymentSessionsWorkflow as unknown as jest.Mock).mockReturnValue(createPaymentSession);
     (processPaymentWorkflow as unknown as jest.Mock).mockReturnValue(processPayment);
     (createFulfillmentWorkflow as unknown as jest.Mock).mockReturnValue(createFulfillment);
-    let lockTail: Promise<unknown> = Promise.resolve();
+    const lockTails = new Map<string, Promise<unknown>>();
     const locking = {
       execute: jest.fn((_keys: string[], callback: () => Promise<unknown>) => {
-        const result = lockTail.then(callback);
-        lockTail = result.catch(() => undefined);
+        const key = _keys.join(":");
+        const result = (lockTails.get(key) || Promise.resolve()).then(callback);
+        lockTails.set(key, result.catch(() => undefined));
         return result;
       }),
     };
@@ -217,5 +228,6 @@ describe("membership Stripe webhook", () => {
       items: [{ id: "orli_1", quantity: 1 }],
     }));
     expect(membership).toMatchObject({ order_id: "order_1", payment_id: "pay_1", fulfillment_id: "ful_1" });
+    expect(service.createStripeWebhookEvents).toHaveBeenCalledTimes(1);
   });
 });

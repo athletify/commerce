@@ -55,6 +55,7 @@ customer.subscription.updated
 customer.subscription.deleted
 invoice.paid
 invoice.payment_failed
+invoice.payment_action_required
 ```
 
 Copy the new destination's signing secret to the deployment environment as

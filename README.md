@@ -114,7 +114,7 @@ If you add an external client later, create a publishable API key in the admin d
 
 This implementation keeps them in the isolated `membership` module and does not modify the cart or checkout flow for one-time purchases.
 
-First, apply the migration and register a Stripe webhook pointing to `POST /hooks/memberships/stripe`, using `STRIPE_WEBHOOK_SECRET`. Select: `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, and `invoice.payment_failed`. The signature is verified and event IDs are stored to prevent duplicate processing.
+First, apply the migration and register a dedicated Stripe webhook pointing to `POST /hooks/memberships/stripe`, using `STRIPE_MEMBERSHIP_WEBHOOK_SECRET`. Select: `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_failed`, and `invoice.payment_action_required`. The signature is verified and event IDs are stored to prevent duplicate processing.
 
 An administrator configures each plan with `POST /admin/membership-plans`:
 

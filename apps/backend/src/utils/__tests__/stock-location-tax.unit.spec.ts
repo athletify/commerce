@@ -69,4 +69,28 @@ describe("stock location tax resolver", () => {
 
     expect(refresh.run).toHaveBeenCalledWith({ input: { cart_id: "cart_wa" } });
   });
+
+  it("replaces cart tax lines when its stock location changes", async () => {
+    let stockLocationId = "sloc_ca";
+    const cartService = { updateCarts: jest.fn(), setLineItemTaxLines: jest.fn() };
+    const query = { graph: jest.fn(async ({ entity, filters }: any) => {
+      if (entity === "stock_location") {
+        const isWashington = filters.id === "sloc_wa";
+        return { data: [{ id: filters.id, address: { country_code: "US", province: isWashington ? "WA" : "CA" } }] };
+      }
+      if (entity === "tax_region") return { data: [
+        { country_code: "us", province_code: "ca", tax_rates: [stateRate] },
+        { country_code: "us", province_code: "wa", tax_rates: [{ ...stateRate, id: "txr_wa", code: "WA", rate: 6.5 }] },
+      ] };
+      return { data: [{ id: "cart_1", metadata: { stock_location_id: stockLocationId }, items: [{ id: "item_1" }] }] };
+    }) };
+    const scope = { resolve: (key: string) => key === "query" ? query : cartService };
+
+    await applyStockLocationTaxes(scope, "cart_1");
+    stockLocationId = "sloc_wa";
+    await applyStockLocationTaxes(scope, "cart_1");
+
+    expect(cartService.setLineItemTaxLines).toHaveBeenNthCalledWith(1, "cart_1", [expect.objectContaining({ tax_rate_id: "txr_ca" })]);
+    expect(cartService.setLineItemTaxLines).toHaveBeenNthCalledWith(2, "cart_1", [expect.objectContaining({ tax_rate_id: "txr_wa", rate: 6.5 })]);
+  });
 });

@@ -58,7 +58,7 @@ start_listener() {
   return 1
 }
 
-membership_events="customer.subscription.created,customer.subscription.updated,customer.subscription.deleted,invoice.paid,invoice.payment_failed"
+membership_events="customer.subscription.created,customer.subscription.updated,customer.subscription.deleted,invoice.paid,invoice.payment_failed,invoice.payment_action_required"
 # Medusa's payment webhook must only receive transitions that can authorize or
 # complete a payment. Forwarding payment_intent.created makes Medusa attempt to
 # complete the cart before Stripe Elements has confirmed the card.

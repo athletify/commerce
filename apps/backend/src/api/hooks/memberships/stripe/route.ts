@@ -14,6 +14,7 @@ import {
   resolveEventBus,
   resolveLink,
   resolveLocking,
+  resolveLogger,
   resolveMembershipService,
   resolveOrderService,
   resolveQuery,
@@ -57,18 +58,34 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
   if (!verification.valid) return res.status(400).json({ message: verification.message });
   const event = verification.event;
   const membershipService = resolveMembershipService(req.scope);
-  if ((await membershipService.listStripeWebhookEvents({ stripe_event_id: event.id })).length) {
-    return res.json({ received: true });
-  }
+  const locking = resolveLocking(req.scope);
+  const logger = resolveLogger(req.scope);
 
-  const subscriptionId = subscriptionIdFor(event);
-  if (subscriptionId) {
-    const membership = await retrieveMembershipSubscriptionByStripeId(membershipService, subscriptionId);
-    if (membership && membership.renewal_type !== "none") {
-      await processMembershipEvent(req, event, membership);
+  await locking.execute([`membership-webhook-event:${event.id}`], async () => {
+    if ((await membershipService.listStripeWebhookEvents({ stripe_event_id: event.id })).length) {
+      return;
     }
-  }
-  await membershipService.createStripeWebhookEvents({ stripe_event_id: event.id });
+
+    const subscriptionId = subscriptionIdFor(event);
+    if (!subscriptionId) {
+      logger.warn(`Membership Stripe webhook ignored event_id=${event.id} type=${event.type} reason=missing_subscription_id`);
+    } else {
+      const membership = await retrieveMembershipSubscriptionByStripeId(membershipService, subscriptionId);
+      if (!membership) {
+        logger.warn(`Membership Stripe webhook ignored event_id=${event.id} type=${event.type} subscription_id=${subscriptionId} reason=membership_not_found`);
+      } else if (membership.renewal_type !== "none") {
+        await processMembershipEvent(req, event, membership);
+      }
+    }
+
+    try {
+      await membershipService.createStripeWebhookEvents({ stripe_event_id: event.id });
+    } catch (error) {
+      // A second worker may have completed the same event after a distributed
+      // lock lease expired. The persisted unique event record is authoritative.
+      if (!(await membershipService.listStripeWebhookEvents({ stripe_event_id: event.id })).length) throw error;
+    }
+  });
   res.json({ received: true });
 };
 

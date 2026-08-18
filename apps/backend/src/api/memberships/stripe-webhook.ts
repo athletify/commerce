@@ -3,7 +3,7 @@ import Stripe from "stripe";
 
 export type StripeWebhookVerification =
   | { valid: true; event: Stripe.Event }
-  | { valid: false; message: "Missing Stripe signature" | "Invalid Stripe signature" };
+  | { valid: false; message: "Membership Stripe webhook secret is not configured" | "Missing Stripe signature" | "Invalid Stripe signature" };
 
 /** `preserveRawBody: true` is configured for this route in api/middlewares.ts. */
 export function verifyStripeWebhook(
@@ -11,9 +11,12 @@ export function verifyStripeWebhook(
   stripe: Stripe,
   signingSecret: string | undefined
 ): StripeWebhookVerification {
+  if (!signingSecret) {
+    return { valid: false, message: "Membership Stripe webhook secret is not configured" };
+  }
   const signature = request.headers["stripe-signature"];
   const rawBody = request.rawBody;
-  if (typeof signature !== "string" || !signingSecret || !Buffer.isBuffer(rawBody)) {
+  if (typeof signature !== "string" || !Buffer.isBuffer(rawBody)) {
     return { valid: false, message: "Missing Stripe signature" };
   }
   try {
